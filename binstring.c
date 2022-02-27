@@ -2,7 +2,10 @@
 #include<unistd.h>
 #include<stdint.h>
 #include<stdlib.h>
+#include<endian.h>
+#include<limits.h>
 
+#define U64MAX 0xffffffffffffffff
 #define BUFSIZE 4096
 
 char buffer[BUFSIZE];
@@ -19,7 +22,23 @@ void exit_err_end(char* src, ssize_t i){
 
 void exit_err_chr()
 {
-	write(STDERR_FILENO, "illegal character found\n",24);
+	dprintf(STDERR_FILENO, "%s\n", "illegal character found");
+	exit(1);
+}
+
+void exit_err_val()
+{
+	dprintf(STDERR_FILENO, "%s\n", "number of excessive size in decimal field");
+	exit(1);
+}
+
+void exit_err_siz(char c){
+	dprintf(STDERR_FILENO, "unsupported integer size '%c'\n", c);
+	exit(1);
+}
+
+void exit_err_ndn(char c){
+	dprintf(STDERR_FILENO, "unsupported endianess value '%c'\n", c);
 	exit(1);
 }
 
@@ -50,21 +69,39 @@ uint8_t _hex_get(char c)
 	}
 }
 
-ssize_t _dec_get(char* src, ssize_t* i)
+uint64_t _dec_get(char* src, ssize_t* i)
 {
-	ssize_t res = 0;
+	uint64_t res = 0;
 	while(src[*i]>='0' && src[*i]<='9'){
+		if(res > (U64MAX/10)){
+			exit_err_val();
+			return 0;
+		}
 		res *= 10;
+		if(res > (U64MAX-(src[*i]-'0'))){
+			exit_err_val();
+			return 0;
+		}
 		res += src[*i]-'0';
 		*i += 1;
 	}
 	return res;
 }
 
+ssize_t _dec_get_ssi(char* src, ssize_t* i)
+{
+	uint64_t res = _dec_get(src, i);
+	if(res > SSIZE_MAX){
+		exit_err_val();
+		return 0;
+	}
+	return (ssize_t)res;
+}
+
 ssize_t repeat(char* src, ssize_t i)
 {
 	ssize_t j = i+1;
-	ssize_t count = _dec_get(src, &j);
+	ssize_t count = _dec_get_ssi(src, &j);
 	ssize_t k;
 	if(src[j]=='\0')
 		exit_err_end(src, j);
@@ -76,6 +113,75 @@ ssize_t repeat(char* src, ssize_t i)
 		if(src[k]=='\0') exit_err_end(src, k);
 	}
 	return (k-i)+1;
+}
+
+ssize_t num_parse(char* src, ssize_t i)
+{
+	union{
+		uint64_t d;
+		uint32_t w;
+		uint16_t h;
+		uint8_t b;
+	} res;
+
+	ssize_t j = i+1;
+	char siz = src[j];
+	if((siz != '1') && (siz != '2') && (siz != '4') && (siz != '8')){
+		exit_err_siz(siz);
+		return 0;
+	}
+	j++;
+	char en = src[j];
+	if((en != 'b') && (en != 'l')){
+		exit_err_ndn(en);
+		return 0;
+	}
+	j++;
+	if(src[j] == '\0'){
+		exit_err_end(src, j);
+		return 0;
+	}
+	if(siz == '1'){
+		submit((char)(_dec_get(src, &j)&0xff));
+	}
+	else if(siz == '2'){
+		res.h = (uint16_t)(_dec_get(src, &j)&0xffff);
+		if(en == 'b')
+			res.h = htobe16(res.h);
+		else if(en == 'l')
+			res.h = htole16(res.h);
+		for(uint8_t x = 0; x<2; x++)
+			submit(((char*)(&res.h))[x]);
+	}
+	else if(siz == '4'){
+		res.w = (uint32_t)(_dec_get(src, &j)&0xffffffff);
+		if(en == 'b')
+			res.w = htobe32(res.w);
+		else if(en == 'l')
+			res.w = htole32(res.w);
+		for(uint8_t x = 0; x<4; x++)
+			submit(((char*)(&res.w))[x]);
+	}
+	else{
+		res.d = _dec_get(src, &j);
+		if(en == 'b')
+			res.d = htobe64(res.d);
+		else if(en == 'l')
+			res.d = htole64(res.d);
+		for(uint8_t x = 0; x<8; x++)
+			submit(((char*)(&res.d))[x]);
+	}
+
+	if(src[j] == '\0'){
+		exit_err_end(src, j);
+		return 0;
+	}
+	if(src[j] != '#'){
+		exit_err_chr();
+		return 0;
+	}
+
+	return (j-i)+1;
 }
 
 ssize_t hex_parse(char* src, ssize_t i)
@@ -122,6 +228,9 @@ ssize_t parse(char* src, ssize_t i)
 			break;
 		case '|':
 			return hex_parse(src, i);
+			break;
+		case '#':
+			return num_parse(src, i);
 			break;
 		case '\\':
 			return escape(src, i);
