@@ -6,50 +6,34 @@
 #include<limits.h>
 
 #define U64MAX 0xffffffffffffffff
-#define BUFSIZE 4096
-
-char buffer[BUFSIZE];
-ssize_t offset = 0;
 
 ssize_t parse(char*, ssize_t);
 
 void exit_err_end(char* src, ssize_t i){
-	write(STDERR_FILENO, "unexpected end of string near: \"", 32);
-	write(STDERR_FILENO, &src[(i-16>0)?(i-16):0], (i-16>0)?16:i);
-	write(STDERR_FILENO, "\"\n", 2);
+	fprintf(stderr, "unexpected end of string near: \"%s\"\n",&src[(i-16>0)?(i-16):0]);
 	exit(1);
 }
 
 void exit_err_chr()
 {
-	dprintf(STDERR_FILENO, "%s\n", "illegal character found");
+	fprintf(stderr, "%s\n", "illegal character found");
 	exit(1);
 }
 
 void exit_err_val()
 {
-	dprintf(STDERR_FILENO, "%s\n", "number of excessive size in decimal field");
+	fprintf(stderr, "%s\n", "number of excessive size in decimal field");
 	exit(1);
 }
 
 void exit_err_siz(char c){
-	dprintf(STDERR_FILENO, "unsupported integer size '%c'\n", c);
+	fprintf(stderr, "unsupported integer size '%c'\n", c);
 	exit(1);
 }
 
 void exit_err_ndn(char c){
-	dprintf(STDERR_FILENO, "unsupported endianess value '%c'\n", c);
+	fprintf(stderr, "unsupported endianess value '%c'\n", c);
 	exit(1);
-}
-
-void submit(char c)
-{
-	buffer[offset] = c;
-	offset++;
-	if(offset>=BUFSIZE){
-		write(STDOUT_FILENO,buffer, BUFSIZE);
-		offset=0;
-	}
 }
 
 uint8_t _hex_get(char c)
@@ -142,7 +126,7 @@ ssize_t num_parse(char* src, ssize_t i)
 		return 0;
 	}
 	if(siz == '1'){
-		submit((char)(_dec_get(src, &j)&0xff));
+		putchar((char)(_dec_get(src, &j)&0xff));
 	}
 	else if(siz == '2'){
 		res.h = (uint16_t)(_dec_get(src, &j)&0xffff);
@@ -150,8 +134,8 @@ ssize_t num_parse(char* src, ssize_t i)
 			res.h = htobe16(res.h);
 		else if(en == 'l')
 			res.h = htole16(res.h);
-		for(uint8_t x = 0; x<2; x++)
-			submit(((char*)(&res.h))[x]);
+
+		fwrite((char*)(&res.h), 1, 2, stdout);
 	}
 	else if(siz == '4'){
 		res.w = (uint32_t)(_dec_get(src, &j)&0xffffffff);
@@ -159,8 +143,8 @@ ssize_t num_parse(char* src, ssize_t i)
 			res.w = htobe32(res.w);
 		else if(en == 'l')
 			res.w = htole32(res.w);
-		for(uint8_t x = 0; x<4; x++)
-			submit(((char*)(&res.w))[x]);
+
+		fwrite((char*)(&res.w), 1, 4, stdout);
 	}
 	else{
 		res.d = _dec_get(src, &j);
@@ -168,8 +152,8 @@ ssize_t num_parse(char* src, ssize_t i)
 			res.d = htobe64(res.d);
 		else if(en == 'l')
 			res.d = htole64(res.d);
-		for(uint8_t x = 0; x<8; x++)
-			submit(((char*)(&res.d))[x]);
+
+		fwrite((char*)(&res.d), 1, 8, stdout);
 	}
 
 	if(src[j] == '\0'){
@@ -198,7 +182,7 @@ ssize_t hex_parse(char* src, ssize_t i)
 			break;
 		
 		c |= _hex_get(src[j]);
-		submit(c);
+		putchar(c);
 		c = 0;
 	}
 	if(src[j] == '\0')
@@ -213,7 +197,7 @@ ssize_t escape(char* src,ssize_t i)
 	if(src[i]=='\0'){
 		exit_err_end(src, i);
 	}
-	submit(src[i]);
+	putchar(src[i]);
 	return 2;
 }
 
@@ -236,17 +220,11 @@ ssize_t parse(char* src, ssize_t i)
 			return escape(src, i);
 			break;
 		default:
-			submit(src[i]);
+			putchar(src[i]);
 			return 1;
 			break;
 	}
 	return 0;
-}
-
-void buf_flush()
-{
-	write(STDOUT_FILENO, buffer, offset);
-	offset = 0;
 }
 
 int main(int argc, char** argv)
@@ -260,6 +238,5 @@ int main(int argc, char** argv)
 	for(ssize_t i = 0; source[i] != '\0'; i+=b_read){
 		b_read = parse(source, i);
 	}
-	buf_flush();
 	return 0;
 }
