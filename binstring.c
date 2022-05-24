@@ -174,10 +174,17 @@ ssize_t hex_parse(char* src, ssize_t i)
 	ssize_t j;
 	i++;
 	for(j = i; src[j] != '\0' && src[j] != '|'; j++){
+		while(src[j]==' ' || src[j]=='\t')
+			j++;
+		if(src[j]=='\0' || src[j]=='|')
+			break;
+
 		c |= _hex_get(src[j]);
 
 		c <<= 4;
 		j++;
+		while(src[j]==' ' || src[j]=='\t')
+			j++;
 		if(src[j]=='\0' || src[j]=='|')
 			break;
 		
@@ -201,6 +208,41 @@ ssize_t escape(char* src,ssize_t i)
 	return 2;
 }
 
+ssize_t range(char* src, ssize_t i)
+{
+	ssize_t j = i+1;
+	if(src[j]=='\0'){
+		exit_err_end(src, j);
+	}
+	uint64_t length = _dec_get(src, &j);
+	if(src[j]=='\0'){
+		exit_err_end(src, j);
+	}
+	else if(src[j]!=','){
+		exit_err_chr();
+	}
+	j++;
+	if(src[j]=='\0'){
+		exit_err_end(src, j);
+	}
+	uint64_t count = _dec_get(src, &j);
+	if(src[j]=='\0'){
+		exit_err_end(src, j);
+	}
+	else if(src[j]!=';'){
+		exit_err_chr();
+	}
+
+	for(uint64_t k = 0; k < count; k++){
+		for(uint64_t c = 0; c < length-1; c++){
+			putchar((char)0xaa);
+		}
+		putchar((char)((k & 0x0f)<<4)|0x0a);
+	}
+
+	return (j-i)+1;
+}
+
 ssize_t parse(char* src, ssize_t i)
 {
 	switch(src[i]){
@@ -215,6 +257,9 @@ ssize_t parse(char* src, ssize_t i)
 			break;
 		case '#':
 			return num_parse(src, i);
+			break;
+		case '@':
+			return range(src, i);
 			break;
 		case '\\':
 			return escape(src, i);
