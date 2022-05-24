@@ -23,7 +23,7 @@ writes a sequence of count blocks of length length,
 each block is composed of length-1 '0xAA' bytes,  
 and one containing the block's number
 
-* escape: `\<character\>`:  
+* escape: `<character>`:  
 prints the character verbatim and prevents it from opening or closing a directive
 
 * characters outside these sequences are printed as they are
